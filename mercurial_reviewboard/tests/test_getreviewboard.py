@@ -13,5 +13,5 @@ def test_get_credentials_from_config(mock_reviewboard):
 
     getreviewboard(ui, opts)
 
-    mock_reviewboard.assert_called_with(ui, b'http://example.com/',
+    mock_reviewboard.assert_called_with( b'http://example.com/',
                                         b'foo', b'bar', proxy=None, apiver=b'')

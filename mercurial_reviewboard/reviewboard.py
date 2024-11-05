@@ -173,7 +173,7 @@ class HttpClient:
             rsp, = e.args
             raise ReviewBoardError(rsp)
 
-    def has_valid_cookie(self, ui):
+    def has_valid_cookie(self):
         """
         Load the user's cookie file and see if they have a valid
         'rbsessionid' cookie for the current Review Board server.  Returns
@@ -187,20 +187,20 @@ class HttpClient:
             # Cookie files don't store port numbers, unfortunately, so
             # get rid of the port number if it's present.
             host = host.split(b":")[0]
-            ui.status(str.encode("Looking for '%s %s' cookie in %s \n" % (host.decode('utf-8'), path.decode('utf-8'), self.cookie_file)))
+            print("Looking for '%s %s' cookie in %s \n" % (host.decode('utf-8'), path.decode('utf-8'), self.cookie_file))
             self._cj.load(self.cookie_file, ignore_expires=True)
             try:
                 cookie = self._cj._cookies[host][path]['rbsessionid']
 
                 if not cookie.is_expired():
-                    ui.status(str.encode("Loaded valid cookie -- no login required\n"))
+                    print("Loaded valid cookie -- no login required\n")
                     return True
 
-                ui.status(str.encode("Cookie file loaded, but cookie has expired\n"))
+                print("Cookie file loaded, but cookie has expired\n")
             except KeyError:
-                ui.status(str.encode("Cookie file loaded, but no cookie for this server\n"))
+                print("Cookie file loaded, but no cookie for this server\n")
         except IOError as error:
-            ui.status(str.encode(("Couldn't load cookie file: %s" % error)))
+            print("Couldn't load cookie file: %s" % error)
         return False
 
     def _http_request(self, method, path, fields, files):
@@ -545,12 +545,12 @@ class Api10Client(ApiClient):
         if diff:
             self._upload_diff(id, diff, parentdiff)
 
-
-def make_rbclient(ui, url, username, password, proxy=None, apiver=''):
+# this method must be compatible with THG implementation to make the plugin working in totroiseHg UI: https://foss.heptapod.net/mercurial/tortoisehg/thg/-/blob/branch/stable/tortoisehg/hgqt/postreview.py#L96 
+def make_rbclient(url, username, password, proxy=None, apiver=''):
 
     httpclient = HttpClient(url, proxy)
 
-    if not httpclient.has_valid_cookie(ui):
+    if not httpclient.has_valid_cookie():
         if not username:
             username = bytes(input('Username: '))
         if not password:

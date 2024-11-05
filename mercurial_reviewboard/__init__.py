@@ -329,7 +329,7 @@ def getreviewboard(ui, opts):
         ui.status(str.encode('password: %s\n' % '**********'))
 
     try:
-        return make_rbclient(ui, server, username, password, proxy=proxy,
+        return make_rbclient(server, username, password, proxy=proxy,
                              apiver=opts.get('apiver'))
     except ReviewBoardError as msg:
         raise error.Abort(str.encode(str(msg)))
