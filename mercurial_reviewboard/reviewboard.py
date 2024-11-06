@@ -86,13 +86,13 @@ class ReviewBoardHTTPPasswordMgr(urllib.request.HTTPPasswordMgr):
 
     def __init__(self, reviewboard_url):
         self.passwd = {}
-        self.rb_url = reviewboard_url
+        self.rb_url = reviewboard_url if type(reviewboard_url) != bytes else reviewboard_url.decode('utf-8')
         self.rb_user = None
         self.rb_pass = None
 
     def set_credentials(self, username, password):
-        self.rb_user = username
-        self.rb_pass = password
+        self.rb_user = username if type(username) != bytes else username.decode('utf-8')
+        self.rb_pass = password if type(password) != bytes else password.decode('utf-8')
 
     def find_user_password(self, realm, uri):
         if uri.startswith(self.rb_url):
@@ -100,9 +100,8 @@ class ReviewBoardHTTPPasswordMgr(urllib.request.HTTPPasswordMgr):
                 print("==> HTTP Authentication Required")
                 print('Enter username and password for "%s" at %s' % \
                       (realm, urlparse(uri)[1]))
-                self.rb_user = bytes(input('Username: '))
-                self.rb_pass = str.encode(getpass.getpass('Password: '))
-
+                self.rb_user = input('Username: ')
+                self.rb_pass = getpass.getpass('Password: ')
             return self.rb_user, self.rb_pass
         else:
             # If this is an auth request for some other domain (since HTTP
@@ -187,7 +186,9 @@ class HttpClient:
             # Cookie files don't store port numbers, unfortunately, so
             # get rid of the port number if it's present.
             host = host.split(b":")[0]
-            print("Looking for '%s %s' cookie in %s \n" % (host.decode('utf-8'), path.decode('utf-8'), self.cookie_file))
+            host = host.decode('utf-8')
+            path = path.decode('utf-8')
+            print("Looking for '%s %s' cookie in %s \n" % (host, path, self.cookie_file))
             self._cj.load(self.cookie_file, ignore_expires=True)
             try:
                 cookie = self._cj._cookies[host][path]['rbsessionid']
@@ -552,13 +553,11 @@ def make_rbclient(url, username, password, proxy=None, apiver=''):
 
     if not httpclient.has_valid_cookie():
         if not username:
-            username = bytes(input('Username: '))
+            username = input('Username: ')
         if not password:
-            password = str.encode(getpass.getpass('Password: '))
-
-        httpclient.set_credentials(username.decode('utf-8'), password.decode('utf-8'))
+            password = getpass.getpass('Password: ')
 
     cli = Api20Client(httpclient)
-    cli.login(username.decode('utf-8'), password.decode('utf-8'))
+    cli.login(username, password)
     return cli
 

@@ -139,9 +139,9 @@ repository accessible to Review Board is not the upstream repository.
 HG issue 3841 workaround
 https://bitbucket.org/tortoisehg/thg/issue/3841/reviewboard-extension-error-unknown
 '''
-    oldin, oldout, olderr = sys.stdin, sys.stdout, sys.stderr
+    #oldin, oldout, olderr = sys.stdin, sys.stdout, sys.stderr
     # sys.stdin, sys.stdout, sys.stderr = ui.fin, ui.fout, ui.ferr
-    sys.stdin, sys.stderr = ui.fin, ui.ferr
+    #sys.stdin, sys.stderr = ui.fin, ui.ferr
 
     ui.status(str.encode('postreview plugin, version %s\n' % __version__))
 
@@ -167,8 +167,8 @@ https://bitbucket.org/tortoisehg/thg/issue/3841/reviewboard-extension-error-unkn
     diff, parentdiff = create_review_data(ui, repo, c, parent, rparent)
 
     send_review(ui, repo, c, parent, diff, parentdiff, opts)
-    ui.status(b"sended")
-    sys.stdin, sys.stdout, sys.stderr = oldin, oldout, olderr
+
+    #sys.stdin, sys.stdout, sys.stderr = oldin, oldout, olderr
 
 
 def find_rparent(ui, repo, c, opts):
@@ -244,8 +244,9 @@ def send_review(ui, repo, c, parentc, diff, parentdiff, opts):
     else:
         request_id = new_review(ui, fields, diff, parentdiff,
                                 opts, files)
-
-    request_url = '%sr/%s/' % (find_server(ui, opts).decode('utf-8'), request_id)
+    if type(request_id) == bytes:
+        request_id = request_id.decode('utf-8')
+    request_url = '%s/r/%s/' % (find_server(ui, opts).decode('utf-8'), request_id)
     if not request_url.startswith('http'):
         request_url = 'http://%s' % request_url
 
