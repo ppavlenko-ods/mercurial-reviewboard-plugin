@@ -5,14 +5,14 @@ import datetime
 import getpass
 import http.cookiejar
 import json as simplejson
+import mimetypes
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from random import random
+import uuid
 from urllib.parse import urljoin, urlparse
 
-import requests
 import io
 
 
@@ -212,19 +212,17 @@ class HttpClient:
         url = urljoin(self.url, str.encode(path))
         
         headers = {}
-        if files:
-            files = self._map_files(files)
+
         credentials = ('%s:%s' % (self._password_mgr.rb_user, self._password_mgr.rb_pass))
         encoded_credentials = base64.b64encode(credentials.encode('ascii'))
         headers["Authorization"] = 'Basic %s' % encoded_credentials.decode("ascii")
         try:
-            response = requests.request(method=method, url=url.decode('utf-8').replace(" ", "%20"), data=fields, headers=headers, files=files)
-            # r = ApiRequest(method, url.decode('utf-8').replace(" ", "%20"), body, headers)
-            #data = response.text
-            data = response.content
+            data = self._send_with_urllib(method, url.decode('utf-8').replace(" ", "%20"), fields, headers, files)
+
             try:
                 self._cj.save(self.cookie_file)
             except:
+                print("exception when cookie file saving")
                 # this can be ignored safely
                 pass
             return data
@@ -270,6 +268,109 @@ class HttpClient:
 
         return result
 
+    def _send_with_urllib(self, method, url, fields, headers, files):
+        form = MultiPartForm()
+        if fields:
+            for key in fields:
+                form.add_field(key, fields[key])
+
+        if files:
+            for key in files:
+                filename = files[key]['filename']
+                content = files[key]['content']
+                if type(content) != bytes:
+                    content = content.encode('utf-8')
+                form.add_file(key, filename,
+                              fileHandle=io.BytesIO(content))
+
+        # Build the request, including the byte-string
+        # for the data to be posted.
+        data = form.bytes()
+        r = urllib.request.Request(url, data=data, method=method)
+
+        r.add_header('Content-type', form.get_content_type())
+        r.add_header('Content-length', len(data))
+        if headers:
+            for key in headers:
+                r.add_header(key, headers[key])
+
+        return urllib.request.urlopen(r).read().decode('utf-8')
+
+class MultiPartForm:
+    """Accumulate the data to be used when posting a form."""
+
+    def __init__(self):
+        self.form_fields = []
+        self.files = []
+        # Use a large random byte string to separate
+        # parts of the MIME data.
+        self.boundary = uuid.uuid4().hex.encode('utf-8')
+        return
+
+    def get_content_type(self):
+        return 'multipart/form-data; boundary={}'.format(
+            self.boundary.decode('utf-8'))
+
+    def add_field(self, name, value):
+        """Add a simple field to the form data."""
+        self.form_fields.append((name, value))
+
+    def add_file(self, fieldname, filename, fileHandle,
+                 mimetype=None):
+        """Add a file to be uploaded."""
+        body = fileHandle.read()
+        if mimetype is None:
+            mimetype = (
+                mimetypes.guess_type(filename)[0] or
+                'application/octet-stream'
+            )
+        self.files.append((fieldname, filename, mimetype, body))
+        return
+
+    @staticmethod
+    def _form_data(name):
+        return ('Content-Disposition: form-data; '
+                'name="{}"\r\n').format(name).encode('utf-8')
+
+    @staticmethod
+    def _attached_file(name, filename):
+        return ('Content-Disposition: file; '
+                'name="{}"; filename="{}"\r\n').format(
+                    name, filename).encode('utf-8')
+
+    @staticmethod
+    def _content_type(ct):
+        return 'Content-Type: {}\r\n'.format(ct).encode('utf-8')
+
+    def bytes(self):
+        """Return a byte-string representing the form data,
+        including attached files.
+        """
+        buffer = io.BytesIO()
+        boundary = b'--' + self.boundary + b'\r\n'
+
+        # Add the form fields
+        for name, value in self.form_fields:
+            buffer.write(boundary)
+            buffer.write(self._form_data(name))
+            buffer.write(b'\r\n')
+            if type(value) != bytes:
+                buffer.write(value.encode('utf-8'))
+            else:
+                buffer.write(value)
+            buffer.write(b'\r\n')
+
+        # Add the files to upload
+        for f_name, filename, f_content_type, body in self.files:
+            buffer.write(boundary)
+            buffer.write(self._attached_file(f_name, filename))
+            buffer.write(self._content_type(f_content_type))
+            buffer.write(b'\r\n')
+            buffer.write(body)
+            buffer.write(b'\r\n')
+
+        buffer.write(b'--' + self.boundary + b'--\r\n')
+        return buffer.getvalue()
 
 class ApiClient:
     def __init__(self, httpclient, apiver):
