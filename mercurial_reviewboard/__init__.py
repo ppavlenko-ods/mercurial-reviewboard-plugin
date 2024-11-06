@@ -10,13 +10,13 @@ from mercurial import hg, mdiff, patch, util, commands, error, registrar
 from mercurial.commands import bundle, unbundle
 from mercurial.i18n import _
 from mercurial.node import (hex, nullid)
-from mercurial.utils import dateutil
+from mercurial.utils import dateutil, urlutil
 
 from .hgversion import HgVersion
 from .reviewboard import make_rbclient, ReviewBoardError
 from .utils import cmp
 
-__version__ = '4.1.0'
+__version__ = '4.2.0'
 
 cmdtable = {}
 command = registrar.command(cmdtable)
@@ -329,7 +329,7 @@ def getreviewboard(ui, opts):
         ui.status(str.encode('password: %s\n' % '**********'))
 
     try:
-        return make_rbclient(ui, server, username, password, proxy=proxy,
+        return make_rbclient(server, username, password, proxy=proxy,
                              apiver=opts.get('apiver'))
     except ReviewBoardError as msg:
         raise error.Abort(str.encode(str(msg)))
@@ -560,8 +560,8 @@ def expandpath(ui, upstream):
     if upstream:
         return ui.expandpath(upstream)
     else:
-        return ui.expandpath(ui.expandpath(b'reviewboard', b'default-push'),
-                             b'default')
+        res = urlutil.get_unique_push_path('postreview',None, ui)
+        return res.rawloc
 
 
 def check_parent_options(opts):

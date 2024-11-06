@@ -6,7 +6,6 @@ import getpass
 import http.cookiejar
 import json as simplejson
 import os
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -14,7 +13,7 @@ from random import random
 from urllib.parse import urljoin, urlparse
 
 import requests
-import sys
+import io
 
 
 class APIError(Exception):
@@ -174,7 +173,7 @@ class HttpClient:
             rsp, = e.args
             raise ReviewBoardError(rsp)
 
-    def has_valid_cookie(self, ui):
+    def has_valid_cookie(self):
         """
         Load the user's cookie file and see if they have a valid
         'rbsessionid' cookie for the current Review Board server.  Returns
@@ -188,20 +187,20 @@ class HttpClient:
             # Cookie files don't store port numbers, unfortunately, so
             # get rid of the port number if it's present.
             host = host.split(b":")[0]
-            ui.status(str.encode("Looking for '%s %s' cookie in %s \n" % (host.decode('utf-8'), path.decode('utf-8'), self.cookie_file)))
+            print("Looking for '%s %s' cookie in %s \n" % (host.decode('utf-8'), path.decode('utf-8'), self.cookie_file))
             self._cj.load(self.cookie_file, ignore_expires=True)
             try:
                 cookie = self._cj._cookies[host][path]['rbsessionid']
 
                 if not cookie.is_expired():
-                    ui.status(str.encode("Loaded valid cookie -- no login required\n"))
+                    print("Loaded valid cookie -- no login required\n")
                     return True
 
-                ui.status(str.encode("Cookie file loaded, but cookie has expired\n"))
+                print("Cookie file loaded, but cookie has expired\n")
             except KeyError:
-                ui.status(str.encode("Cookie file loaded, but no cookie for this server\n"))
+                print("Cookie file loaded, but no cookie for this server\n")
         except IOError as error:
-            ui.status(str.encode(("Couldn't load cookie file: %s" % error)))
+            print("Couldn't load cookie file: %s" % error)
         return False
 
     def _http_request(self, method, path, fields, files):
@@ -211,19 +210,15 @@ class HttpClient:
         if path.startswith('/'):
             path = path[1:]
         url = urljoin(self.url, str.encode(path))
-        body = None
+        
         headers = {}
-        if fields or files:
-            content_type, body = self._encode_multipart_formdata(fields, files)
-            headers = {
-                'Content-Type': content_type,
-                'Content-Length': str(len(body)),
-            }
+        if files:
+            files = self._map_files(files)
         credentials = ('%s:%s' % (self._password_mgr.rb_user, self._password_mgr.rb_pass))
         encoded_credentials = base64.b64encode(credentials.encode('ascii'))
         headers["Authorization"] = 'Basic %s' % encoded_credentials.decode("ascii")
         try:
-            response = requests.request(method=method, url=url.decode('utf-8').replace(" ", "%20"), data=body, headers=headers)
+            response = requests.request(method=method, url=url.decode('utf-8').replace(" ", "%20"), data=fields, headers=headers, files=files)
             # r = ApiRequest(method, url.decode('utf-8').replace(" ", "%20"), body, headers)
             #data = response.text
             data = response.content
@@ -256,42 +251,24 @@ class HttpClient:
             raise APIError(rsp)
         return rsp
 
-    def _encode_multipart_formdata(self, fields, files):
-        """
-        Encodes data for use in an HTTP POST.
-        """
-        BOUNDARY = _make_boundary()
-        content = ""
+    def _map_files(self, files):
+        '''
+        Maps input 'files' dictionary (bundle or diff) - name with content to a structure that will be passed to requests.request method:
+            files = {key:(filename, binary content)}
 
-        fields = fields or {}
-        files = files or {}
-
-        for key in fields:
-            content += "--" + BOUNDARY + "\r\n"
-            content += "Content-Disposition: form-data; name=\"%s\"\r\n" % key
-            content += "\r\n"
-            if type(fields[key]) == bytes:
-                content += fields[key].decode('latin1') + "\r\n"
-            else:
-                content += fields[key] + "\r\n"
-
+        Implemented based on:
+        https://docs.python-requests.org/en/latest/user/quickstart/#post-a-multipart-encoded-file
+        https://blog.finxter.com/5-best-ways-to-convert-python-bytes-to-_io-bufferedreader/ 
+        '''
+        result = {}
         for key in files:
             filename = files[key]['filename']
-            value = files[key]['content']
-            content += "--" + BOUNDARY + "\r\n"
-            content += "Content-Disposition: form-data; name=\"%s\"; " % key
-            content += "filename=\"%s\"\r\n" % filename
-            content += "\r\n"
-            if type(value) == bytes:
-                content += value.decode('latin1') + "\r\n"
-            else:
-                content += value + "\r\n"
+            content = files[key]['content']
+            if type(content) != bytes:
+                content = content.encode('utf-8')
+            result[key] = (filename, io.BufferedReader(io.BytesIO(content)))
 
-        content += "--" + BOUNDARY + "--\r\n"
-        content += "\r\n"
-
-        content_type = "multipart/form-data; boundary=%s" % BOUNDARY
-        return content_type, content
+        return result
 
 
 class ApiClient:
@@ -568,12 +545,12 @@ class Api10Client(ApiClient):
         if diff:
             self._upload_diff(id, diff, parentdiff)
 
-
-def make_rbclient(ui, url, username, password, proxy=None, apiver=''):
+# this method must be compatible with THG implementation to make the plugin working in totroiseHg UI: https://foss.heptapod.net/mercurial/tortoisehg/thg/-/blob/branch/stable/tortoisehg/hgqt/postreview.py#L96 
+def make_rbclient(url, username, password, proxy=None, apiver=''):
 
     httpclient = HttpClient(url, proxy)
 
-    if not httpclient.has_valid_cookie(ui):
+    if not httpclient.has_valid_cookie():
         if not username:
             username = bytes(input('Username: '))
         if not password:
@@ -599,24 +576,3 @@ def make_rbclient(ui, url, username, password, proxy=None, apiver=''):
         return cli
     else:
         raise Exception("Unknown API version: %s" % apiver)
-
-
-_width = len(repr(sys.maxsize-1))
-_fmt = '%%0%dd' % _width
-
-def _make_boundary(cls, text=None):
-    # Craft a random boundary.  If text is given, ensure that the chosen
-    # boundary doesn't appear in the text.
-    token = random.randrange(sys.maxsize)
-    boundary = ('=' * 15) + (_fmt % token) + '=='
-    if text is None:
-        return boundary
-    b = boundary
-    counter = 0
-    while True:
-        cre = cls._compile_re('^--' + re.escape(b) + '(--)?$', re.MULTILINE)
-        if not cre.search(text):
-            break
-        b = boundary + '.' + str(counter)
-        counter += 1
-    return b
