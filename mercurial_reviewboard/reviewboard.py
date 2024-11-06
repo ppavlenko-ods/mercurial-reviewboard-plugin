@@ -545,107 +545,6 @@ class Api20Client(ApiClient):
                 self._api_request(furl['method'], furl['href'], f_fields, {'path': f})
 
 
-class Api10Client(ApiClient):
-    """
-    Implements the 1.0 version of the API
-    """
-
-    def __init__(self, httpclient):
-        ApiClient.__init__(self, httpclient, '1.0')
-        self._repositories = None
-        self._requests = None
-
-    def _api_post(self, url, fields=None, files=None):
-        return self._api_request('POST', url, fields, files)
-
-    def login(self, username=None, password=None):
-        if not username and not password:
-            if self._httpclient.has_valid_cookie():
-                return
-
-        if not username:
-            username = bytes(input('Username: '))
-        if not password:
-            password = str.encode(getpass.getpass('Password: '))
-
-        self._api_post('/api/json/accounts/login/', {
-            'username': username,
-            'password': password,
-        })
-
-    def repositories(self):
-        if not self._repositories:
-            rsp = self._api_post('/api/json/repositories/')
-            self._repositories = [Repository(r['id'], r['name'], r['tool'],
-                                             r['path'])
-                                  for r in rsp['repositories']]
-        return self._repositories
-
-    def requests(self):
-        if not self._requests:
-            rsp = self._api_post('/api/json/reviewrequests/all/')
-            self._requests = rsp['review_requests']
-        return self._requests
-
-    def new_request(self, repo_id, fields={}, diff='', parentdiff=''):
-        repository_path = None
-        for r in self.repositories():
-            if r.id == int(repo_id):
-                repository_path = r.path
-                break
-        if not repository_path:
-            raise ReviewBoardError("can't find repository with id: %s" % \
-                                   repo_id)
-
-        id = self._create_request(repository_path)
-
-        self._set_request_details(id, fields, diff, parentdiff)
-
-        return id
-
-    def update_request(self, id, fields={}, diff='', parentdiff=''):
-        request_id = None
-        for r in self.requests():
-            if r['id'] == int(id):
-                request_id = int(id)
-                break
-        if not request_id:
-            raise ReviewBoardError("can't find request with id: %s" % id)
-
-        self._set_request_details(request_id, fields, diff, parentdiff)
-
-        return request_id
-
-    def publish(self, id):
-        self._api_post('api/json/reviewrequests/%s/publish/' % id)
-
-    def _create_request(self, repository_path):
-        data = {'repository_path': repository_path}
-        rsp = self._api_post('/api/json/reviewrequests/new/', data)
-
-        return rsp['review_request']['id']
-
-    def _set_request_field(self, id, field, value):
-        self._api_post('/api/json/reviewrequests/%s/draft/set/' %
-                       id, {field: value})
-
-    def _upload_diff(self, id, diff, parentdiff=""):
-        data = {'path': {'filename': 'diff', 'content': diff}}
-        if parentdiff:
-            data['parent_diff_path'] = \
-                {'filename': 'parent_diff', 'content': parentdiff}
-        rsp = self._api_post('/api/json/reviewrequests/%s/diff/new/' % \
-                             id, {}, data)
-
-    def _set_fields(self, id, fields={}):
-        for field in fields:
-            self._set_request_field(id, field, fields[field])
-
-    def _set_request_details(self, id, fields, diff, parentdiff):
-        self._set_fields(id, fields)
-        if diff:
-            self._upload_diff(id, diff, parentdiff)
-
 # this method must be compatible with THG implementation to make the plugin working in totroiseHg UI: https://foss.heptapod.net/mercurial/tortoisehg/thg/-/blob/branch/stable/tortoisehg/hgqt/postreview.py#L96 
 def make_rbclient(url, username, password, proxy=None, apiver=''):
 
@@ -659,21 +558,7 @@ def make_rbclient(url, username, password, proxy=None, apiver=''):
 
         httpclient.set_credentials(username.decode('utf-8'), password.decode('utf-8'))
 
-    if not apiver:
-        # Figure out whether the server supports API version 2.0
-        try:
-            httpclient.api_request('GET', '/api/')
-            apiver = '2.0'
-        except:
-            apiver = '1.0'
+    cli = Api20Client(httpclient)
+    cli.login(username.decode('utf-8'), password.decode('utf-8'))
+    return cli
 
-    if apiver == '2.0':
-        cli = Api20Client(httpclient)
-        cli.login(username.decode('utf-8'), password.decode('utf-8'))
-        return cli
-    elif apiver == '1.0':
-        cli = Api10Client(httpclient)
-        cli.login(username.decode('utf-8'), password.decode('utf-8'))
-        return cli
-    else:
-        raise Exception("Unknown API version: %s" % apiver)
