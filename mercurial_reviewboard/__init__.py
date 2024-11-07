@@ -16,7 +16,7 @@ from .hgversion import HgVersion
 from .reviewboard import make_rbclient, ReviewBoardError
 from .utils import cmp
 
-__version__ = '4.2.0'
+__version__ = '5.0.0'
 
 cmdtable = {}
 command = registrar.command(cmdtable)
@@ -100,7 +100,6 @@ def fetch_reviewed(ui, repo, **opts):
           (b'B', b'bugs_closed', b'', str.encode('comma separated list of bug IDs addressed by the change')),
           (b'', b'username', b'', str.encode('username for the ReviewBoard site')),
           (b'', b'password', b'', str.encode('password for the ReviewBoard site')),
-          (b'', b'apiver', b'', str.encode('ReviewBoard API version (e.g. 1.0, 2.0)')),
           (b'a', b'attachbundle', True,
            str.encode('Attach the changeset bundle as a file in order to pull it with pullreviewed')),
           (b'', b'old_server', False, str.encode(
@@ -328,17 +327,16 @@ def getreviewboard(ui, opts):
     password = opts.get(b'password') or ui.config(b'reviewboard', b'password')
     if password:
         ui.status(str.encode('password: %s\n' % '**********'))
-
+    api_token = opts.get(b'api_token') or ui.config(b'reviewboard', b'api_token')
     try:
-        return make_rbclient(server, username, password, proxy=proxy,
-                             apiver=opts.get('apiver'))
+        return make_rbclient(server, username, password, proxy=proxy, api_token=api_token)
     except ReviewBoardError as msg:
         raise error.Abort(str.encode(str(msg)))
 
 
 def update_review(request_id, ui, fields, diff, parentdiff, opts, files=None):
     reviewboard = getreviewboard(ui, opts)
-    update_fields(reviewboard, fields)
+
     try:
         reviewboard.delete_attachments_with_caption(request_id, BUNDLE_ATTACHMENT_CAPTION)
         reviewboard.update_request(request_id, fields, diff, parentdiff, files)
@@ -351,7 +349,7 @@ def update_review(request_id, ui, fields, diff, parentdiff, opts, files=None):
 def new_review(ui, fields, diff, parentdiff, opts, files=None):
     reviewboard = getreviewboard(ui, opts)
     repo_id = find_reviewboard_repo_id(ui, reviewboard, opts)
-    update_fields(reviewboard, fields)
+
     try:
         request_id = reviewboard.new_request(repo_id, fields, diff, parentdiff, files)
         if opts['publish']:
@@ -359,16 +357,6 @@ def new_review(ui, fields, diff, parentdiff, opts, files=None):
     except ReviewBoardError as msg:
         raise error.Abort(str.encode(str(msg)))
     return request_id
-
-
-def update_fields(reviewboard, fields):
-    '''Some fields are added or deprecated in API version 2.0
-       By default we prefer API v2.0 and have to fix data for backward compatibility.
-    '''
-    if reviewboard.apiver == '1.0':
-        # commit_id field is introduced in API 2.0 (changenum field is deprecated in favor of the commit_id field)
-        if 'commit_id' in fields:
-            fields['changenum'] = fields.pop('commit_id')
 
 
 def find_reviewboard_repo_id(ui, reviewboard, opts):

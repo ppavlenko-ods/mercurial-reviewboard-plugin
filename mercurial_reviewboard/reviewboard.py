@@ -127,7 +127,7 @@ class HttpErrorHandler(urllib.request.HTTPDefaultErrorHandler):
 
 
 class HttpClient:
-    def __init__(self, url, proxy=None):
+    def __init__(self, url, proxy=None, api_token=None):
         if not url.endswith(b'/'):
             url = url + b'/'
         self.url = url
@@ -140,6 +140,7 @@ class HttpClient:
             homepath = os.environ["HOME"]
         else:
             homepath = ''
+        self.api_token = api_token if type(api_token) != bytes else api_token.decode('utf-8')
         self.cookie_file = os.path.join(homepath, ".post-review-cookies.txt")
         self._cj = http.cookiejar.MozillaCookieJar(self.cookie_file)
         self._password_mgr = ReviewBoardHTTPPasswordMgr(self.url)
@@ -214,9 +215,8 @@ class HttpClient:
         
         headers = {}
 
-        credentials = ('%s:%s' % (self._password_mgr.rb_user, self._password_mgr.rb_pass))
-        encoded_credentials = base64.b64encode(credentials.encode('ascii'))
-        headers["Authorization"] = 'Basic %s' % encoded_credentials.decode("ascii")
+        self._provide_auth_header(headers)
+
         try:
             data = self._send_with_urllib(method, url.decode('utf-8').replace(" ", "%20"), fields, headers, files)
 
@@ -240,6 +240,14 @@ class HttpClient:
             msg = "URL Error: " + e.reason[1]
             raise ReviewBoardError({'err': {'msg': msg, 'code': code}})
 
+    def _provide_auth_header(self, headers):
+        if self.api_token:
+            headers["Authorization"] = 'token %s' % self.api_token
+        if self._password_mgr.rb_user and self._password_mgr.rb_pass:
+            credentials = ('%s:%s' % (self._password_mgr.rb_user, self._password_mgr.rb_pass))
+            encoded_credentials = base64.b64encode(credentials.encode('ascii'))
+            headers["Authorization"] = 'Basic %s' % encoded_credentials.decode("ascii")
+
     def _process_json(self, data):
         """
         Loads in a JSON file and returns the data if successful. On failure,
@@ -250,24 +258,6 @@ class HttpClient:
             raise APIError(rsp)
         return rsp
 
-    def _map_files(self, files):
-        '''
-        Maps input 'files' dictionary (bundle or diff) - name with content to a structure that will be passed to requests.request method:
-            files = {key:(filename, binary content)}
-
-        Implemented based on:
-        https://docs.python-requests.org/en/latest/user/quickstart/#post-a-multipart-encoded-file
-        https://blog.finxter.com/5-best-ways-to-convert-python-bytes-to-_io-bufferedreader/ 
-        '''
-        result = {}
-        for key in files:
-            filename = files[key]['filename']
-            content = files[key]['content']
-            if type(content) != bytes:
-                content = content.encode('utf-8')
-            result[key] = (filename, io.BufferedReader(io.BytesIO(content)))
-
-        return result
 
     def _send_with_urllib(self, method, url, fields, headers, files):
         form = MultiPartForm()
@@ -547,11 +537,11 @@ class Api20Client(ApiClient):
 
 
 # this method must be compatible with THG implementation to make the plugin working in totroiseHg UI: https://foss.heptapod.net/mercurial/tortoisehg/thg/-/blob/branch/stable/tortoisehg/hgqt/postreview.py#L96 
-def make_rbclient(url, username, password, proxy=None, apiver=''):
+def make_rbclient(url, username, password, proxy=None, api_token=None):
 
-    httpclient = HttpClient(url, proxy)
+    httpclient = HttpClient(url, proxy, api_token=api_token)
 
-    if not httpclient.has_valid_cookie():
+    if not httpclient.has_valid_cookie() and not api_token:
         if not username:
             username = input('Username: ')
         if not password:
