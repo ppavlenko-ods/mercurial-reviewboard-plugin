@@ -1,5 +1,7 @@
 reviewboard extension for mercurial
 
+THIS IS A LEGACY VERSION of the plugin that is compatible with python 2 version.
+
 This extension adds a new command 'postreview' to post changesets for
 review to a reviewboard server.
 
