@@ -12,7 +12,6 @@ import urllib.parse
 import urllib.request
 import uuid
 from urllib.parse import urljoin, urlparse
-
 import io
 
 
@@ -187,9 +186,11 @@ class HttpClient:
             # Cookie files don't store port numbers, unfortunately, so
             # get rid of the port number if it's present.
             host = host.split(b":")[0]
+
             host = host.decode('utf-8')
             path = path.decode('utf-8')
             print("Looking for '%s %s' cookie in %s \n" % (host, path, self.cookie_file))
+
             self._cj.load(self.cookie_file, ignore_expires=True)
             try:
                 cookie = self._cj._cookies[host][path]['rbsessionid']
@@ -257,7 +258,6 @@ class HttpClient:
         if rsp['stat'] == 'fail':
             raise APIError(rsp)
         return rsp
-
 
     def _send_with_urllib(self, method, url, fields, headers, files):
         form = MultiPartForm()

@@ -16,7 +16,9 @@ from .hgversion import HgVersion
 from .reviewboard import make_rbclient, ReviewBoardError
 from .utils import cmp
 
+
 __version__ = '5.0.0'
+
 
 cmdtable = {}
 command = registrar.command(cmdtable)
@@ -329,7 +331,9 @@ def getreviewboard(ui, opts):
         ui.status(str.encode('password: %s\n' % '**********'))
     api_token = opts.get(b'api_token') or ui.config(b'reviewboard', b'api_token')
     try:
+
         return make_rbclient(server, username, password, proxy=proxy, api_token=api_token)
+
     except ReviewBoardError as msg:
         raise error.Abort(str.encode(str(msg)))
 
