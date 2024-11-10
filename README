@@ -6,7 +6,7 @@ review to a reviewboard server.
 For more information about Review Board see: http://www.review-board.org/
 
 
-CONFIGURATION:
+##CONFIGURATION:
 
 Configure your .hgrc to enable the extension by adding following lines:
 
@@ -21,6 +21,7 @@ server          = http://reviewboard.example.com/
 # OPTIONAL ITEMS:
 # user            = ... # username for login
 # password        = ...
+# api_token       = ... # Authentication token to be used instead of login/pass auth. Can be generated in reviewboard account
 # target_groups   = ... # default review groups
 # target_people   = ... # default review people
 # launch_webbrowser = true # open review in a browser
@@ -82,5 +83,6 @@ In order to run the plugin tests, run:
     
 See the TESTING file for more information.
 
+## Know issues
+- TortoiseHg may crash when using username/password auth method without specified password in config or through UI (actually when THG invokes getpss method)
 
-Copyright (C) 2008 Dennis Schoen <dennis.schoen@epublica.de>
